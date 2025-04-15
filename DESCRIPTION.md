@@ -56,12 +56,13 @@ The project is structured into separate components:
   - **evaluation_score:** for ai to compare each position(represent value of position as score) and use it to choose board positions.
   - **ai_decision_time:** Time taken by the AI to decide on a move.
 
+![uml.png](assets/uml.png)
+
 ### 3.3 Algorithms Involved
 - **Move Validation:** Checking that each move abides by chess rules through each piece's `possible_moves()` method.
 - **Pathfinding:** For sliding pieces (Bishop, Rook, Queen) to generate valid move paths.
 - **Event Handling:** Managing user inputs (mouse clicks) and updating the game state.
 - **Data Logging:** Recording gameplay metrics (number of moves, move times, etc.) for future analysis.
-
 
 ## 4. Statistical Data (Prop Stats)
 
