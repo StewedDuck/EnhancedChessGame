@@ -28,6 +28,12 @@ A PyGame-based chess game that follows official rules and adds educational featu
    pip install -r requirements.txt
 
 ## Running the Game
-
+1. **run**
    ```bash
    python main.py
+2. **play**
+- A window will open displaying the chessboard.
+- Click on a piece to select it (red border).
+- Green circles indicate valid moves.
+- Click on a highlighted square to move the piece.
+- rule are followed by official chessgame
