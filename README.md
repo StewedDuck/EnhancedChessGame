@@ -11,11 +11,10 @@ A PyGame-based chess game that follows official rules and adds educational featu
 
 ## Features
 
-- Standard chess gameplay (2-player)
+- Standard chess gameplay (2-player) or (vs AI)
 - Object‑oriented design with dedicated subclasses for each piece (Pawn, Knight, Bishop, Rook, Queen, King)
 - Valid-move highlighting and capture suggestions
 - Data logging of game metrics (move times, move counts, captures) for analysis
-- Future AI integration planned
 
 ## Installation
 
@@ -29,5 +28,6 @@ A PyGame-based chess game that follows official rules and adds educational featu
    pip install -r requirements.txt
 
 ## Running the Game
+
    ```bash
-      python main.py
+   python main.py
