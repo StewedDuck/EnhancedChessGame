@@ -176,6 +176,6 @@ We focus on “Time Taken per Move” with:
   - Complete comprehensive testing, debugging, and documentation.
   - Submit the final project deliverables.
 
-**Version:** 3.0
+**Version:** 4.0
 
 https://github.com/StewedDuck/EnhancedChessGame
