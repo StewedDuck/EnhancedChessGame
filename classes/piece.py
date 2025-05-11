@@ -108,6 +108,7 @@ class Bishop(Piece):
 class Rook(Piece):
     def __init__(self, color, position):
         super().__init__("rook", color, position)
+        self.first_move = True
 
     def possible_moves(self, board_state):
         moves = []
@@ -194,6 +195,7 @@ class Queen(Piece):
 class King(Piece):
     def __init__(self, color, position):
         super().__init__("king", color, position)
+        self.first_move = True
 
     def possible_moves(self, board_state):
         moves = []
@@ -215,6 +217,4 @@ class King(Piece):
                 target = board_state[new_row][new_col]
                 if target is None or target.color != self.color:
                     moves.append((new_row, new_col))
-
-        # castling move here (still figuring how)
         return moves

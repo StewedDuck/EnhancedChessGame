@@ -4,12 +4,16 @@ from classes.game import Game
 
 def main():
     pygame.init()
-    WIDTH, HEIGHT = 800, 800
+
+    BOARD_SIZE = 800
+    MENU_WIDTH = 200
+    WIDTH, HEIGHT = BOARD_SIZE + MENU_WIDTH, BOARD_SIZE
+
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Enhanced Chess Game for Beginners")
     clock = pygame.time.Clock()
 
-    game = Game(screen, WIDTH, HEIGHT)
+    game = Game(screen, BOARD_SIZE, BOARD_SIZE, MENU_WIDTH)
     game.start_game()
 
     running = True
@@ -26,5 +30,5 @@ def main():
     pygame.quit()
     sys.exit()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
