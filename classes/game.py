@@ -61,6 +61,7 @@ class Game:
         self.captures      = 0
         self.game_start_ts = self.last_tick
         self.ai_times      = []
+        self.stats_logged  = False
 
     def start_game(self):
         self.board.initialize_board()
@@ -72,8 +73,10 @@ class Game:
         self.promote = False
         self.waiting_for_ai = False
         self.ai_thinking = False
+
+        now = pygame.time.get_ticks()
         self.clock_times = {"white": self.time_limit, "black": self.time_limit}
-        self.last_tick = pygame.time.get_ticks()
+        self.last_tick = now
 
         # Reset animations
         self.hover_target = None
@@ -84,13 +87,13 @@ class Game:
         self.click_dir = -1
 
         # Reset logging
-        now = self.last_tick
         self.move_count    = 0
         self.move_times.clear()
         self.last_move_ts  = now
         self.captures      = 0
         self.game_start_ts = now
         self.ai_times.clear()
+        self.stats_logged  = False
 
     def update_game(self):
         now = pygame.time.get_ticks()
@@ -114,7 +117,17 @@ class Game:
             if self.click_offset <= -3 or self.click_offset >= 3:
                 self.click_dir *= -1
 
-        # DRAWING
+        # detect checkmate/stalemate (skip before AI move display)
+        if self.state == "ongoing" and not self.promote and not (self.waiting_for_ai and not self.ai_thinking):
+            in_chk = self._is_in_check(self.active_player, self.board.board_state)
+            can_mv = self._has_any_valid_move(self.active_player)
+            if in_chk and not can_mv:
+                self.state = "checkmate"
+                self.winner = "black" if self.active_player == "white" else "white"
+            elif not in_chk and not can_mv:
+                self.state = "stalemate"
+
+        # --- DRAW BOARD & PIECES ---
         self.screen.fill((50, 50, 50))
         self.screen.blit(self.board.board_image, (self.board_offset_x, 0))
 
@@ -127,57 +140,7 @@ class Game:
                 ov.fill((255, 0, 0, 100))
                 self.screen.blit(ov, (self.board_offset_x + kc*sz, kr*sz))
 
-        # Detect checkmate/stalemate
-        if self.state == "ongoing" and not self.promote and not (self.waiting_for_ai and not self.ai_thinking):
-            in_chk = self._is_in_check(self.active_player, self.board.board_state)
-            can_mv = self._has_any_valid_move(self.active_player)
-            if in_chk and not can_mv:
-                self.state = "checkmate"
-                self.winner = "black" if self.active_player == "white" else "white"
-            elif not in_chk and not can_mv:
-                self.state = "stalemate"
-
-        # Endgame: log stats, display message, then return
-        if self.state in ("checkmate", "stalemate"):
-            path = "stats.csv"
-            write_header = not os.path.exists(path) or os.path.getsize(path) == 0
-            with open(path, "a", newline="") as f:
-                w = csv.writer(f)
-                if write_header:
-                    w.writerow([
-                        "move_count", "avg_move_time", "min_move_time", "max_move_time", "sd_move_time",
-                        "captures", "game_duration", "avg_ai_time"
-                    ])
-                # compute stats
-                avg_m = statistics.mean(self.move_times) if self.move_times else 0
-                mn = min(self.move_times) if self.move_times else 0
-                mx = max(self.move_times) if self.move_times else 0
-                sd = statistics.pstdev(self.move_times) if len(self.move_times) > 1 else 0
-                duration = (pygame.time.get_ticks() - self.game_start_ts) / 1000.0
-                avg_ai = statistics.mean(self.ai_times) if self.ai_times else 0
-                w.writerow([
-                    self.move_count,
-                    f"{avg_m:.2f}", f"{mn:.2f}", f"{mx:.2f}", f"{sd:.2f}",
-                    self.captures,
-                    f"{duration:.2f}",
-                    f"{avg_ai:.2f}"
-                ])
-
-            # endgame text
-            font = pygame.font.SysFont(None, 64)
-            msg = "Stalemate" if self.state == "stalemate" else f"{self.winner.capitalize()} wins!"
-            txt = font.render(msg, True, (255, 255, 255))
-            rect = txt.get_rect(center=(self.board_w//2, self.board_h//2))
-            self.screen.blit(txt, rect)
-            self.menu.draw(self.screen, self)
-            return
-
-        # Promotion UI
-        if self.promote:
-            self._draw_promotion_ui()
-            return
-
-        # Draw pieces with animations
+        # draw all pieces
         for r in range(8):
             for c in range(8):
                 p = self.board.board_state[r][c]
@@ -185,47 +148,77 @@ class Game:
                     continue
                 x = self.board_offset_x + c*self.board.square_size
                 y = r*self.board.square_size
-
                 # hover jump
                 if self.hover_target == (r, c) and self.hover_frames > 0:
                     frac = self.hover_frames / self.max_hover
                     y += int(-self.hover_height * frac)
                     self.hover_frames -= 1
-
                 # click float
                 if self.click_anim and self.selected_pos == (r, c):
                     y += self.click_offset
-
                 img = self.board.piece_images[p.image_key]
                 self.screen.blit(img, (x, y))
 
-        # Highlight & valid moves
+        # highlight selection & valid moves
         if self.selected_pos:
             self._draw_selection_and_moves()
 
-        # Sidebar
+        # sidebar
         self.menu.draw(self.screen, self)
-        # End DRAWING
 
-        # Handle AI two-phase move
+        # Endgame: log stats once, overlay text, keep board visible
+        if self.state in ("checkmate", "stalemate"):
+            if not self.stats_logged:
+                path = "stats.csv"
+                need_header = not os.path.exists(path) or os.path.getsize(path) == 0
+                with open(path, "a", newline="") as f:
+                    w = csv.writer(f)
+                    if need_header:
+                        w.writerow([
+                            "move_count", "avg_move_time", "min_move_time", "max_move_time",
+                            "sd_move_time", "captures", "game_duration", "avg_ai_time"
+                        ])
+                    avg_m = statistics.mean(self.move_times) if self.move_times else 0
+                    mn = min(self.move_times) if self.move_times else 0
+                    mx = max(self.move_times) if self.move_times else 0
+                    sd = statistics.pstdev(self.move_times) if len(self.move_times) > 1 else 0
+                    duration = (pygame.time.get_ticks() - self.game_start_ts) / 1000.0
+                    avg_ai = statistics.mean(self.ai_times) if self.ai_times else 0
+                    w.writerow([
+                        self.move_count,
+                        f"{avg_m:.2f}", f"{mn:.2f}", f"{mx:.2f}", f"{sd:.2f}",
+                        self.captures, f"{duration:.2f}", f"{avg_ai:.2f}"
+                    ])
+                self.stats_logged = True
+
+            font = pygame.font.SysFont(None, 64)
+            msg = "Stalemate" if self.state == "stalemate" else f"{self.winner.capitalize()} wins!"
+            txt = font.render(msg, True, (255, 255, 255))
+            rect = txt.get_rect(center=(self.board_w//2, self.board_h//2))
+            self.screen.blit(txt, rect)
+            return
+
+        # Promotion UI
+        if self.promote:
+            self._draw_promotion_ui()
+            return
+
+        # AI two-phase move
         if self.waiting_for_ai and not self.ai_thinking:
             self.ai_thinking = True
             return
-
         if self.waiting_for_ai and self.ai_thinking:
             start = pygame.time.get_ticks()
             mv = self.ai.compute_move(self.board)
             think_time = (pygame.time.get_ticks() - start) / 1000.0
             self.clock_times[self.ai.color] -= think_time
             self.ai_times.append(think_time)
-
             if mv:
                 (sr, sc), (dr, dc) = mv
                 pc = self.board.board_state[sr][sc]
                 self.board.board_state[sr][sc] = None
                 self.board.board_state[dr][dc] = pc
                 pc.position = (dr, dc)
-
             self.active_player = "white"
             self.waiting_for_ai = False
             self.ai_thinking = False
@@ -242,10 +235,10 @@ class Game:
             new_target = None
             if self.board_offset_x <= mx < self.board_offset_x + self.board_w:
                 bx = mx - self.board_offset_x
-                row, col = self.board.get_board_pos((bx, my))
-                p = self.board.board_state[row][col]
+                r, c = self.board.get_board_pos((bx, my))
+                p = self.board.board_state[r][c]
                 if p and p.color == self.active_player:
-                    new_target = (row, col)
+                    new_target = (r, c)
             if new_target != self.last_hover_target:
                 self.hover_target = new_target
                 if new_target is not None:
@@ -279,18 +272,43 @@ class Game:
 
             # Attempt move
             sr, sc = self.selected_pos
+            piece = self.board.board_state[sr][sc]
             valid = self._calc_valid_moves(sr, sc)
+
             if (row, col) in valid:
-                # count captures
-                target_piece = self.board.board_state[row][col]
-                if target_piece:
+                # captures
+                target = self.board.board_state[row][col]
+                if target:
                     self.captures += 1
 
-                # commit move
-                piece = self.board.board_state[sr][sc]
-                self.board.board_state[sr][sc] = None
-                self.board.board_state[row][col] = piece
-                piece.position = (row, col)
+                # castling?
+                if isinstance(piece, King) and abs(col - sc) == 2:
+                    # kingside
+                    if col > sc:
+                        rook_src, rook_dst = 7, sc + 1
+                    else:  # queenside
+                        rook_src, rook_dst = 0, sc - 1
+
+                    # move king
+                    self.board.board_state[sr][sc] = None
+                    self.board.board_state[row][col] = piece
+                    piece.position = (row, col)
+                    piece.first_move = False
+
+                    # move rook
+                    rook = self.board.board_state[sr][rook_src]
+                    self.board.board_state[sr][rook_src] = None
+                    self.board.board_state[sr][rook_dst] = rook
+                    rook.position = (sr, rook_dst)
+                    rook.first_move = False
+
+                else:
+                    # normal move
+                    self.board.board_state[sr][sc] = None
+                    self.board.board_state[row][col] = piece
+                    piece.position = (row, col)
+                    if isinstance(piece, Pawn) and piece.first_move:
+                        piece.first_move = False
 
                 # log move time
                 now = pygame.time.get_ticks()
@@ -300,15 +318,12 @@ class Game:
                 self.last_move_ts = now
 
                 # pawn promotion
-                if isinstance(piece, Pawn):
-                    if piece.first_move:
-                        piece.first_move = False
-                    if row in (0, 7):
-                        self.promote = True
-                        self.promote_pos = (row, col)
-                        self.promote_color = piece.color
-                        self.selected_pos = None
-                        return
+                if isinstance(piece, Pawn) and row in (0, 7):
+                    self.promote = True
+                    self.promote_pos = (row, col)
+                    self.promote_color = piece.color
+                    self.selected_pos = None
+                    return
 
                 # switch turn
                 if self.mode == "ai":
@@ -369,7 +384,16 @@ class Game:
     def _calc_valid_moves(self, sr, sc):
         piece = self.board.board_state[sr][sc]
         cand = piece.possible_moves(self.board.board_state)
-        # Castling logic
+
+        # castling
+        if isinstance(piece, King) and piece.first_move and not self._is_in_check(self.active_player, self.board.board_state):
+            rook = self.board.board_state[sr][7]
+            if isinstance(rook, Rook) and rook.first_move and all(self.board.board_state[sr][i] is None for i in (5,6)):
+                cand.append((sr, 6))
+            rook = self.board.board_state[sr][0]
+            if isinstance(rook, Rook) and rook.first_move and all(self.board.board_state[sr][i] is None for i in (1,2,3)):
+                cand.append((sr, 2))
+
         valid = []
         for vr, vc in cand:
             tgt = self.board.board_state[vr][vc]
